@@ -120,6 +120,7 @@ router.get('/games', authMiddleware, async (req, res) => {
         const assets = await fetchGameAssets(g.shop, g.objectId);
         return {
           id: g.$id,
+          remoteId: g.$id, // Needed for deletion
           objectId: g.objectId,
           shop: g.shop,
           title: assets?.title || g.title,

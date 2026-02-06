@@ -50,6 +50,8 @@ router.get('/:userId', optionalAuth, async (req, res) => {
       gamesDb.documents.map(async (g) => {
         const assets = await fetchGameAssets(g.shop, g.objectId);
         return {
+          id: g.$id,
+          remoteId: g.$id,
           objectId: g.objectId,
           shop: g.shop,
           title: assets?.title || g.title,
@@ -220,6 +222,8 @@ router.get('/:userId/library', optionalAuth, async (req, res) => {
         console.log(`[Users/Library] Fetching assets for ${doc.shop}/${doc.objectId}`);
         const assets = await fetchGameAssets(doc.shop, doc.objectId);
         return {
+          id: doc.$id,
+          remoteId: doc.$id,
           objectId: doc.objectId,
           shop: doc.shop,
           title: assets?.title || doc.title,
