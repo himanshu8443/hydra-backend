@@ -86,6 +86,7 @@ async function setup() {
     await databases.createStringAttribute(DATABASE_ID, 'games', 'shop', 50, true);
     await databases.createStringAttribute(DATABASE_ID, 'games', 'title', 500, false);
     await databases.createStringAttribute(DATABASE_ID, 'games', 'iconUrl', 2048, false);
+    await databases.createStringAttribute(DATABASE_ID, 'games', 'coverImage', 2048, false);
     await databases.createIntegerAttribute(DATABASE_ID, 'games', 'playTimeInSeconds', false);
     await databases.createDatetimeAttribute(DATABASE_ID, 'games', 'lastTimePlayed', false);
     await databases.createBooleanAttribute(DATABASE_ID, 'games', 'isFavorite', false);

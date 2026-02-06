@@ -3,10 +3,10 @@ const axios = require('axios');
 const HYDRA_API = process.env.HYDRA_OFFICIAL_API || 'https://hydra-api-us-east-1.losbroxas.org';
 const AUTH_URL = 'https://auth.hydra.losbroxas.org';
 
-// Hardcoded for now as requested
+// Credentials from env
 const USER_CREDENTIALS = {
-  username: '8man',
-  password: 'himanshu8443'
+  username: process.env.HYDRA_OFFICIAL_USERNAME,
+  password: process.env.HYDRA_OFFICIAL_PASSWORD
 };
 
 let cachedToken = null;

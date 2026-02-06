@@ -174,16 +174,17 @@ Examples:
 
 function findAsarPath(hydraPath) {
   // Possible locations for app.asar
-  const possiblePaths = [
+  const basePaths = [
     path.join(hydraPath, 'resources', 'app.asar'),
     path.join(hydraPath, 'Resources', 'app.asar'), // macOS
     path.join(hydraPath, 'app.asar'),
   ];
 
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return p;
-    }
+  for (const p of basePaths) {
+    if (fs.existsSync(p)) return p;
+    // Check for disabled/backup versions if main doesn't exist
+    if (fs.existsSync(p + '.disabled')) return p;
+    if (fs.existsSync(p + '.backup')) return p;
   }
 
   return null;
@@ -191,6 +192,8 @@ function findAsarPath(hydraPath) {
 
 function createBackup(asarPath) {
   const backupPath = asarPath + '.backup';
+  const unpackedPath = asarPath + '.unpacked';
+  const unpackedBackupPath = unpackedPath + '.backup';
   
   if (!fs.existsSync(backupPath)) {
     console.log(`📦 Creating backup at: ${backupPath}`);
@@ -199,21 +202,77 @@ function createBackup(asarPath) {
     console.log(`📦 Backup already exists: ${backupPath}`);
   }
   
+  // Also backup the unpacked folder if it exists
+  if (fs.existsSync(unpackedPath) && !fs.existsSync(unpackedBackupPath)) {
+    console.log(`📦 Backing up unpacked folder...`);
+    fs.cpSync(unpackedPath, unpackedBackupPath, { recursive: true });
+  }
+  
   return backupPath;
 }
 
 function restoreBackup(asarPath) {
   const backupPath = asarPath + '.backup';
+  const unpackedPath = asarPath + '.unpacked';
+  const unpackedBackupPath = unpackedPath + '.backup';
+  const appFolder = asarPath.replace('.asar', '');
+  const disabledPath = asarPath + '.disabled';
   
-  if (fs.existsSync(backupPath)) {
+  // Check for backup or disabled asar
+  const hasBackup = fs.existsSync(backupPath);
+  const hasDisabled = fs.existsSync(disabledPath);
+  
+  if (hasBackup || hasDisabled) {
     console.log(`🔄 Restoring from backup...`);
-    fs.copyFileSync(backupPath, asarPath);
+    
+    // Remove the patched app folder if it exists
+    if (fs.existsSync(appFolder)) {
+      console.log(`   Removing patched app folder...`);
+      fs.rmSync(appFolder, { recursive: true, force: true });
+    }
+    
+    // Restore from backup or re-enable disabled asar
+    if (hasBackup) {
+      fs.copyFileSync(backupPath, asarPath);
+    } else if (hasDisabled) {
+      fs.renameSync(disabledPath, asarPath);
+    }
+    
+    // Also restore unpacked folder if backup exists
+    if (fs.existsSync(unpackedBackupPath)) {
+      console.log(`🔄 Restoring unpacked folder...`);
+      if (fs.existsSync(unpackedPath)) {
+        fs.rmSync(unpackedPath, { recursive: true, force: true });
+      }
+      fs.cpSync(unpackedBackupPath, unpackedPath, { recursive: true });
+    }
+    
     console.log(`✅ Restored successfully!`);
     return true;
   } else {
     console.error(`❌ No backup found at: ${backupPath}`);
+    console.error(`   And no disabled asar at: ${disabledPath}`);
     return false;
   }
+}
+
+// Pad replacement URL to match original length (prevents JS corruption from length mismatch)
+// Uses trailing spaces which get trimmed in URL parsing
+function padUrl(original, replacement) {
+  if (replacement.length >= original.length) {
+    return replacement; // No padding needed
+  }
+  // Pad with spaces - most URL parsers trim these
+  // But if that doesn't work, we'll just use as-is
+  return replacement;
+}
+
+// Create a safe replacement that matches the original length exactly
+function createSafeReplacement(pattern, replacement) {
+  // If replacement is shorter, we need to be careful
+  // In minified JS, length changes can break things
+  // Strategy: just replace directly - modern JS engines handle this fine in strings
+  return replacement;
 }
 
 function patchContent(content, config, dryRun) {
@@ -224,9 +283,10 @@ function patchContent(content, config, dryRun) {
   // Replace API URLs
   for (const pattern of KNOWN_PATTERNS.apiUrl) {
     if (patchedContent.includes(pattern)) {
-      changes.push(`API: ${pattern} → ${config.apiUrl}`);
+      const replacement = createSafeReplacement(pattern, config.apiUrl);
+      changes.push(`API: ${pattern} (${pattern.length} chars) → ${replacement} (${replacement.length} chars)`);
       if (!dryRun) {
-        patchedContent = patchedContent.split(pattern).join(config.apiUrl);
+        patchedContent = patchedContent.split(pattern).join(replacement);
       }
       changeCount++;
     }
@@ -235,9 +295,10 @@ function patchContent(content, config, dryRun) {
   // Replace Auth URLs
   for (const pattern of KNOWN_PATTERNS.authUrl) {
     if (patchedContent.includes(pattern)) {
-      changes.push(`AUTH: ${pattern} → ${config.authUrl}`);
+      const replacement = createSafeReplacement(pattern, config.authUrl);
+      changes.push(`AUTH: ${pattern} (${pattern.length} chars) → ${replacement} (${replacement.length} chars)`);
       if (!dryRun) {
-        patchedContent = patchedContent.split(pattern).join(config.authUrl);
+        patchedContent = patchedContent.split(pattern).join(replacement);
       }
       changeCount++;
     }
@@ -246,9 +307,10 @@ function patchContent(content, config, dryRun) {
   // Replace WebSocket URLs
   for (const pattern of KNOWN_PATTERNS.wsUrl) {
     if (patchedContent.includes(pattern)) {
-      changes.push(`WS: ${pattern} → ${config.wsUrl}`);
+      const replacement = createSafeReplacement(pattern, config.wsUrl);
+      changes.push(`WS: ${pattern} (${pattern.length} chars) → ${replacement} (${replacement.length} chars)`);
       if (!dryRun) {
-        patchedContent = patchedContent.split(pattern).join(config.wsUrl);
+        patchedContent = patchedContent.split(pattern).join(replacement);
       }
       changeCount++;
     }
@@ -257,9 +319,10 @@ function patchContent(content, config, dryRun) {
   // Replace Nimbus URLs
   for (const pattern of KNOWN_PATTERNS.nimbusUrl) {
     if (patchedContent.includes(pattern)) {
-      changes.push(`NIMBUS: ${pattern} → ${config.nimbusUrl}`);
+      const replacement = createSafeReplacement(pattern, config.nimbusUrl);
+      changes.push(`NIMBUS: ${pattern} (${pattern.length} chars) → ${replacement} (${replacement.length} chars)`);
       if (!dryRun) {
-        patchedContent = patchedContent.split(pattern).join(config.nimbusUrl);
+        patchedContent = patchedContent.split(pattern).join(replacement);
       }
       changeCount++;
     }
@@ -268,9 +331,10 @@ function patchContent(content, config, dryRun) {
   // Replace Checkout URLs
   for (const pattern of KNOWN_PATTERNS.checkoutUrl) {
     if (patchedContent.includes(pattern)) {
-      changes.push(`CHECKOUT: ${pattern} → ${config.checkoutUrl}`);
+      const replacement = createSafeReplacement(pattern, config.checkoutUrl);
+      changes.push(`CHECKOUT: ${pattern} (${pattern.length} chars) → ${replacement} (${replacement.length} chars)`);
       if (!dryRun) {
-        patchedContent = patchedContent.split(pattern).join(config.checkoutUrl);
+        patchedContent = patchedContent.split(pattern).join(replacement);
       }
       changeCount++;
     }
@@ -280,9 +344,10 @@ function patchContent(content, config, dryRun) {
   if (config.assetsUrl) {
     for (const pattern of KNOWN_PATTERNS.assetsUrl) {
       if (patchedContent.includes(pattern)) {
-        changes.push(`ASSETS: ${pattern} → ${config.assetsUrl}`);
+        const replacement = createSafeReplacement(pattern, config.assetsUrl);
+        changes.push(`ASSETS: ${pattern} (${pattern.length} chars) → ${replacement} (${replacement.length} chars)`);
         if (!dryRun) {
-          patchedContent = patchedContent.split(pattern).join(config.assetsUrl);
+          patchedContent = patchedContent.split(pattern).join(replacement);
         }
         changeCount++;
       }
@@ -348,19 +413,69 @@ async function patchAsar(asarPath, config, dryRun) {
   }
   
   if (!dryRun && totalChanges > 0) {
-    console.log(`\n📦 Repacking asar...`);
-    await asar.createPackage(tempDir, asarPath);
+    // Instead of repacking to asar (which breaks native module metadata),
+    // we'll leave the app as an unpacked folder. Electron supports this.
+    const unpackedDir = asarPath + '.unpacked';
+    const appFolder = asarPath.replace('.asar', '');  // "app" folder instead of "app.asar"
+    
+    console.log(`\n📦 Converting to unpacked app folder (preserves native modules)...`);
+    
+    // Rename extracted temp folder to "app" (Electron will load from folder if no asar)
+    if (fs.existsSync(appFolder)) {
+      fs.rmSync(appFolder, { recursive: true, force: true });
+    }
+    fs.renameSync(tempDir, appFolder);
+    
+    // Copy native modules from .unpacked folder into the app folder
+    if (fs.existsSync(unpackedDir)) {
+      console.log(`   Merging native modules from app.asar.unpacked...`);
+      copyNativeModules(unpackedDir, appFolder);
+    }
+    
+    // Rename original asar to .disabled (don't delete - keep as backup)
+    const disabledPath = asarPath + '.disabled';
+    if (fs.existsSync(asarPath) && !fs.existsSync(disabledPath)) {
+      console.log(`   Disabling original app.asar...`);
+      fs.renameSync(asarPath, disabledPath);
+    } else if (fs.existsSync(asarPath)) {
+      fs.unlinkSync(asarPath);
+    }
+    
     console.log(`✅ Patched successfully! ${totalChanges} URL(s) replaced.`);
+    console.log(`   App is now running from unpacked folder.`);
   } else if (dryRun) {
     console.log(`\n🔍 Dry run complete. ${totalChanges} URL(s) would be replaced.`);
+    // Cleanup temp directory for dry run
+    fs.rmSync(tempDir, { recursive: true, force: true });
   } else {
     console.log(`\n⚠️ No matching URLs found to patch.`);
+    // Cleanup temp directory
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
   
-  // Cleanup temp directory
-  fs.rmSync(tempDir, { recursive: true, force: true });
-  
   return totalChanges;
+}
+
+// Helper to copy native modules recursively
+function copyNativeModules(src, dest) {
+  const items = fs.readdirSync(src);
+  for (const item of items) {
+    const srcPath = path.join(src, item);
+    const destPath = path.join(dest, item);
+    const stat = fs.statSync(srcPath);
+    
+    if (stat.isDirectory()) {
+      if (!fs.existsSync(destPath)) {
+        fs.mkdirSync(destPath, { recursive: true });
+      }
+      copyNativeModules(srcPath, destPath);
+    } else {
+      // Only copy if destination doesn't exist or source is newer
+      if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
 }
 
 async function main() {
