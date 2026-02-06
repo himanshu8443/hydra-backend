@@ -1,6 +1,6 @@
-# Hydra Self-Hosted Backend
+# Hydra Game Launcher Self-Hosted Backend
 
-A private backend server for Hydra Launcher
+A private backend server for Hydra Launcher with premium features.
 
 ## 🚀 Hosting the Backend
 
