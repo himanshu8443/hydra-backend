@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const { authMiddleware, optionalAuth } = require('../middleware/auth');
 const { databases, DATABASE_ID, COLLECTIONS, Query } = require('../config/appwrite');
-const OfficialApi = require('../services/official-api');
+// const OfficialApi = require('../services/official-api');
 
 const router = express.Router();
 
@@ -11,9 +11,9 @@ const HYDRA_API = process.env.HYDRA_OFFICIAL_API || 'https://hydra-api-us-east-1
 // Helper to fetch game assets from official API
 const fetchGameAssets = async (shop, objectId) => {
   try {
-    const token = await OfficialApi.getAccessToken();
+    // const token = await OfficialApi.getAccessToken();
     const headers = { 'User-Agent': 'HydraLauncher' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    // if (token) headers['Authorization'] = `Bearer ${token}`;
     
     console.log(`[Users/fetchAssets] Fetching ${shop}/${objectId}...`);
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}/assets`, {

@@ -1,20 +1,14 @@
 const express = require('express');
 const axios = require('axios');
 const { optionalAuth } = require('../middleware/auth');
-const OfficialApi = require('../services/official-api');
+// const OfficialApi = require('../services/official-api');
 
 const router = express.Router();
 
 const HYDRA_API = process.env.HYDRA_OFFICIAL_API || 'https://hydra-api-us-east-1.losbroxas.org';
 
 // Helper for proxied requests
-// Helper for proxied requests
-const getHeaders = async () => {
-  const token = await OfficialApi.getAccessToken();
-  const headers = { 'User-Agent': 'HydraLauncher' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
-};
+const getHeaders = async () => ({ 'User-Agent': 'HydraLauncher' });
 
 // Helper to rewrite relative image URLs to absolute CDN URLs
 const formatResponse = (data) => {

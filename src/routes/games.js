@@ -2,19 +2,15 @@ const express = require('express');
 const axios = require('axios');
 const { authMiddleware, optionalAuth } = require('../middleware/auth');
 const { databases, DATABASE_ID, COLLECTIONS, ID, Query } = require('../config/appwrite');
-const OfficialApi = require('../services/official-api');
+// const OfficialApi = require('../services/official-api');
 
 const router = express.Router();
 
 const HYDRA_API = process.env.HYDRA_OFFICIAL_API || 'https://hydra-api-us-east-1.losbroxas.org';
 
 // Helper for proxied requests
-const getHeaders = async () => {
-  const token = await OfficialApi.getAccessToken();
-  const headers = { 'User-Agent': 'HydraLauncher' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
-};
+// const getHeaders = async () => { ... } removed
+const getHeaders = () => ({ 'User-Agent': 'HydraLauncher' });
 
 // Helper to rewrite relative image URLs to absolute CDN URLs
 const formatResponse = (data) => {
@@ -79,7 +75,7 @@ router.get('/:shop/:objectId', optionalAuth, async (req, res) => {
 
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}`, {
       params: { language: language || 'en' },
-      headers: await getHeaders()
+      headers: getHeaders()
     });
 
     console.log(`[GameDetails] Response for ${shop}/${objectId}:`, JSON.stringify(response.data).substring(0, 500));
@@ -105,7 +101,7 @@ router.get('/:shop/:objectId/achievements', optionalAuth, async (req, res) => {
 
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}/achievements`, {
       params: { language: language || 'en' },
-      headers: await getHeaders()
+      headers: getHeaders()
     });
 
     res.json(response.data);
@@ -123,7 +119,7 @@ router.get('/:shop/:objectId/stats', optionalAuth, async (req, res) => {
     const { shop, objectId } = req.params;
 
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}/stats`, {
-      headers: await getHeaders()
+      headers: getHeaders()
     });
 
     res.json(response.data);
@@ -139,7 +135,7 @@ router.get('/:shop/:objectId/assets', optionalAuth, async (req, res) => {
     const { shop, objectId } = req.params;
 
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}/assets`, {
-      headers: await getHeaders()
+      headers: getHeaders()
     });
 
     console.log(`[Assets] Response:`, JSON.stringify(response.data).substring(0, 500));
@@ -164,7 +160,7 @@ router.get('/:shop/:objectId/download-sources', optionalAuth, async (req, res) =
         skip: skip || 0,
         ...rest
       },
-      headers: await getHeaders()
+      headers: { 'User-Agent': 'HydraLauncher' }
     });
 
     console.log(`[DownloadSources] Got ${response.data?.length || 0} sources`);
@@ -189,7 +185,7 @@ router.get('/:shop/:objectId/reviews', optionalAuth, async (req, res) => {
   try {
     const { shop, objectId } = req.params;
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}/reviews`, {
-      headers: await getHeaders()
+      headers: getHeaders()
     });
     res.json(response.data);
   } catch {
@@ -210,7 +206,7 @@ router.get('/:shop/:objectId/how-long-to-beat', optionalAuth, async (req, res) =
   try {
     const { shop, objectId } = req.params;
     const response = await axios.get(`${HYDRA_API}/games/${shop}/${objectId}/how-long-to-beat`, {
-      headers: await getHeaders()
+      headers: getHeaders()
     });
     res.json(response.data);
   } catch {
