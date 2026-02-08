@@ -170,11 +170,43 @@ router.get('/:userId/reviews', optionalAuth, async (req, res) => {
 
 router.get('/:userId/stats', optionalAuth, async (req, res) => {
   try {
+    const userId = req.params.userId;
+
+    // Fetch games for playtime calculation
     const games = await databases.listDocuments(DATABASE_ID, COLLECTIONS.GAMES, [
-      Query.equal('userId', req.params.userId)
+      Query.equal('userId', userId),
+      Query.limit(500)
     ]);
 
     const totalPlayTime = games.documents.reduce((acc, g) => acc + (g.playTimeInSeconds || 0), 0);
+
+    // Fetch all achievements for this user
+    const achievementDocs = await databases.listDocuments(DATABASE_ID, COLLECTIONS.ACHIEVEMENTS, [
+      Query.equal('userId', userId),
+      Query.limit(500)
+    ]);
+
+    // Count total unlocked achievements across all games
+    let totalUnlockedAchievements = 0;
+    let totalAchievementPoints = 0;
+
+    for (const doc of achievementDocs.documents) {
+      try {
+        // Achievements are stored as JSON string array
+        const achievements = typeof doc.achievements === 'string' 
+          ? JSON.parse(doc.achievements) 
+          : (doc.achievements || []);
+        
+        totalUnlockedAchievements += achievements.length;
+        // Each achievement is worth 10 points by default
+        totalAchievementPoints += achievements.length * 10;
+      } catch (e) {
+        // Skip malformed achievement data
+        console.error('[Users/Stats] Error parsing achievements:', e.message);
+      }
+    }
+
+    console.log(`[Users/Stats] User ${userId}: ${totalUnlockedAchievements} achievements, ${totalPlayTime}s playtime`);
 
     res.json({
       libraryCount: games.total,
@@ -184,10 +216,10 @@ router.get('/:userId/stats', optionalAuth, async (req, res) => {
         topPercentile: 50
       },
       achievementsPointsEarnedSum: {
-        value: 0,
+        value: totalAchievementPoints,
         topPercentile: 50
       },
-      unlockedAchievementSum: 0
+      unlockedAchievementSum: totalUnlockedAchievements
     });
   } catch (error) {
     console.error('[Users/Stats] Error:', error.message);
@@ -206,21 +238,44 @@ router.get('/:userId/library', optionalAuth, async (req, res) => {
     const { userId } = req.params;
     const { take = '12', skip = '0', sortBy } = req.query;
     
-    console.log(`[Users/Library] Fetching library for user ${userId}`);
+    console.log(`[Users/Library] Fetching library for user ${userId}, sortBy: ${sortBy}`);
     
+    // First, fetch all games (we'll sort in JS for achievement sorting)
     const library = await databases.listDocuments(DATABASE_ID, COLLECTIONS.GAMES, [
       Query.equal('userId', userId),
-      Query.limit(parseInt(take)),
-      Query.offset(parseInt(skip))
+      Query.limit(500) // Get all for proper sorting
     ]);
 
-    console.log(`[Users/Library] Found ${library.documents.length} games`);
+    // Fetch all achievements for this user at once
+    const achievementDocs = await databases.listDocuments(DATABASE_ID, COLLECTIONS.ACHIEVEMENTS, [
+      Query.equal('userId', userId),
+      Query.limit(500)
+    ]);
 
-    // Fetch assets for each game in parallel
-    const games = await Promise.all(
+    // Create a map of gameId -> achievement count
+    const achievementMap = {};
+    for (const doc of achievementDocs.documents) {
+      try {
+        const achievements = typeof doc.achievements === 'string' 
+          ? JSON.parse(doc.achievements) 
+          : (doc.achievements || []);
+        achievementMap[doc.gameId] = {
+          unlocked: achievements.length,
+          points: achievements.length * 10
+        };
+      } catch (e) {
+        achievementMap[doc.gameId] = { unlocked: 0, points: 0 };
+      }
+    }
+
+    console.log(`[Users/Library] Found ${library.documents.length} games, ${achievementDocs.documents.length} achievement records`);
+
+    // Build games with achievement data
+    let games = await Promise.all(
       library.documents.map(async (doc) => {
-        console.log(`[Users/Library] Fetching assets for ${doc.shop}/${doc.objectId}`);
         const assets = await fetchGameAssets(doc.shop, doc.objectId);
+        const achData = achievementMap[doc.objectId] || { unlocked: 0, points: 0 };
+        
         return {
           id: doc.$id,
           remoteId: doc.$id,
@@ -232,25 +287,49 @@ router.get('/:userId/library', optionalAuth, async (req, res) => {
           libraryHeroImageUrl: assets?.libraryHeroImageUrl || null,
           logoImageUrl: assets?.logoImageUrl || null,
           logoPosition: assets?.logoPosition || null,
-          // Map libraryImageUrl to coverImageUrl as client expects it
           coverImageUrl: assets?.coverImageUrl || assets?.libraryImageUrl || null,
           downloadSources: assets?.downloadSources || [],
           playTimeInSeconds: doc.playTimeInSeconds || 0,
           lastTimePlayed: doc.lastTimePlayed,
-          unlockedAchievementCount: 0,
-          achievementCount: 0,
-          achievementsPointsEarnedSum: 0,
-          hasManuallyUpdatedPlaytime: false,
+          unlockedAchievementCount: achData.unlocked,
+          achievementCount: achData.unlocked, // Total unlocked (we don't track total possible)
+          achievementsPointsEarnedSum: achData.points,
+          hasManuallyUpdatedPlaytime: doc.hasManuallyUpdatedPlaytime || false,
           isFavorite: doc.isFavorite || false,
           isPinned: doc.isPinned || false,
-          pinnedDate: null
+          pinnedDate: doc.pinnedDate || null
         };
       })
     );
 
+    // Sort based on sortBy parameter
+    if (sortBy === 'playtime') {
+      games.sort((a, b) => (b.playTimeInSeconds || 0) - (a.playTimeInSeconds || 0));
+    } else if (sortBy === 'playedRecently') {
+      games.sort((a, b) => {
+        const dateA = a.lastTimePlayed ? new Date(a.lastTimePlayed).getTime() : 0;
+        const dateB = b.lastTimePlayed ? new Date(b.lastTimePlayed).getTime() : 0;
+        return dateB - dateA;
+      });
+    } else if (sortBy === 'achievementCount') {
+      games.sort((a, b) => (b.unlockedAchievementCount || 0) - (a.unlockedAchievementCount || 0));
+    } else {
+      // Default: most recently played
+      games.sort((a, b) => {
+        const dateA = a.lastTimePlayed ? new Date(a.lastTimePlayed).getTime() : 0;
+        const dateB = b.lastTimePlayed ? new Date(b.lastTimePlayed).getTime() : 0;
+        return dateB - dateA;
+      });
+    }
+
+    // Apply pagination after sorting
+    const startIndex = parseInt(skip);
+    const endIndex = startIndex + parseInt(take);
+    const paginatedGames = games.slice(startIndex, endIndex);
+
     // Separate pinned games
-    const pinnedGames = games.filter(g => g.isPinned);
-    const regularGames = games.filter(g => !g.isPinned);
+    const pinnedGames = paginatedGames.filter(g => g.isPinned);
+    const regularGames = paginatedGames.filter(g => !g.isPinned);
 
     res.json({
       totalCount: library.total,
