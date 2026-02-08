@@ -342,7 +342,7 @@ router.put('/games/:shop/:objectId/unpin', authMiddleware, async (req, res) => {
 router.put('/games/:shop/:objectId/playtime', authMiddleware, async (req, res) => {
   try {
     const { shop, objectId } = req.params;
-    const { playTimeInMilliseconds } = req.body;
+    const { playTimeInMilliseconds, playTimeInSeconds } = req.body;
 
     const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.GAMES, [
       Query.equal('userId', req.userId),
@@ -351,8 +351,12 @@ router.put('/games/:shop/:objectId/playtime', authMiddleware, async (req, res) =
     ]);
 
     if (existing.documents.length > 0) {
+      const secondsToSave = playTimeInSeconds !== undefined 
+        ? playTimeInSeconds 
+        : Math.floor((playTimeInMilliseconds || 0) / 1000);
+
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.GAMES, existing.documents[0].$id, {
-        playTimeInSeconds: Math.floor((playTimeInMilliseconds || 0) / 1000)
+        playTimeInSeconds: secondsToSave
       });
     }
 
